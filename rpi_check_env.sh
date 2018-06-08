@@ -3,6 +3,9 @@
 show_info() {
     rev=$(fgrep Revision /proc/cpuinfo | cut -d: -f2 | tr -d '[:space:]')
     echo "Revision: $rev"
+    if echo "$rev" | grep -q '^2'; then
+        echo "Warning: Warranty is void for this Pi"
+    fi
 
     kern=$(vcgencmd get_config kernel | cut -d= -f2)
     echo -n "Kernel: "
