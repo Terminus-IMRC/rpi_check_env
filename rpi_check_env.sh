@@ -165,6 +165,17 @@ check_throttled() {
     fi
 }
 
+check_overlay() {
+    overlays=$(sudo vcdbg log msg |& cut -d: -f2- | grep '^ Loaded overlay' |
+            awk '{print $3}' | tr -d "'")
+    if ! echo "$overlays" | fgrep -q pi3-disable-bt; then
+        echo "Warning: Bluetooth is enabled"
+    fi
+    if ! echo "$overlays" | fgrep -q pi3-disable-wifi; then
+        echo "Warning: Wi-Fi is enabled"
+    fi
+}
+
 eval $(detect_model)
 if [ -n "$mod" ]; then
     echo "Model: $mod"
@@ -179,3 +190,4 @@ show_info
 check_freq "$mod"
 check_hdmi
 check_throttled
+check_overlay
