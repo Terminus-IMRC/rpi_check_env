@@ -155,7 +155,7 @@ check_hdmi() {
 check_throttled() {
     th=$(vcgencmd get_throttled | cut -d= -f2)
     if [ $(awk "BEGIN{print and($th, lshift(1, 16))}") -ne 0 ]; then
-        echo "Warning: Under-volrage has occured"
+        echo "Warning: Under-voltage has occured"
     fi
     if [ $(awk "BEGIN{print and($th, lshift(1, 17))}") -ne 0 ]; then
         echo "Warning: ARM frequency capping has occured"
