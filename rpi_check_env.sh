@@ -176,6 +176,17 @@ check_overlay() {
     fi
 }
 
+check_turbo() {
+    val=$(vcgencmd get_config force_turbo | cut -d= -f2)
+    if [ "$val" -eq 0 ]; then
+        echo "Warning: Turbo is not set. Add force_turbo=1 to config.txt."
+    fi
+    val=$(vcgencmd get_config avoid_warnings | cut -d= -f2)
+    if [ "$val" -ne 2 ]; then
+        echo "Warning: avoid_warnings is not 2"
+    fi
+}
+
 eval $(detect_model)
 if [ -n "$mod" ]; then
     echo "Model: $mod"
@@ -191,3 +202,4 @@ check_freq "$mod"
 check_hdmi
 check_throttled
 check_overlay
+check_turbo
