@@ -187,6 +187,12 @@ check_turbo() {
     fi
 }
 
+check_swap() {
+    if mount | fgrep -q swap; then
+        echo "Warning: Swap is enabled. Remove dphys-swapfile package."
+    fi
+}
+
 eval $(detect_model)
 if [ -n "$mod" ]; then
     echo "Model: $mod"
@@ -203,3 +209,4 @@ check_hdmi
 check_throttled
 check_overlay
 check_turbo
+check_swap
