@@ -1,28 +1,47 @@
 #!/usr/bin/env bash
 
+echo_info() {
+    echo "II: $@"
+}
+
+echo_warn() {
+    echo -e "\e[7mWW\e[27m: $@"
+}
+
+echo_error() {
+    echo -e "\e[5;7mEE\e[25;27m: $@"
+}
+
+echo_sup() {
+    echo "  * $@"
+}
+
 show_info() {
-    rev=$(fgrep Revision /proc/cpuinfo | cut -d: -f2 | tr -d '[:space:]')
-    echo "Revision: $rev"
-    if echo "$rev" | grep -q '^2'; then
-        echo "Warning: Warranty is void for this Pi"
+    kern=$(vcgencmd get_config kernel | cut -d= -f2)
+    if [ -n "$kern" ]; then
+        echo_info "Kernel: $kern"
+    else
+        echo_info "Kernel: not set"
     fi
 
-    kern=$(vcgencmd get_config kernel | cut -d= -f2)
-    echo -n "Kernel: "
-    [ -n "$kern" ] && echo "$kern" || echo "not set"
-
     serial=$(fgrep Serial /proc/cpuinfo | cut -d: -f2 | tr -d '[:space:]')
-    echo "Serial: $serial"
+    echo_info "Serial: $serial"
 
     firm_hash=$(vcgencmd version | fgrep version | cut -d' ' -f2)
-    echo "Firmware hash: $firm_hash"
+    echo_info "Firmware hash: $firm_hash"
 
     firm_date=$(vcgencmd version | head -n 1 | sed 's/[ \t]*$//g')
-    echo "Firmware date: $firm_date"
+    echo_info "Firmware date: $firm_date"
 }
 
 # See https://elinux.org/RPi_HardwareHistory#Board_Revision_History
-detect_model() {
+check_model_and_freq() {
+    rev=$(fgrep Revision /proc/cpuinfo | cut -d: -f2 | tr -d '[:space:]')
+    echo_info "Revision: $rev"
+    if echo "$rev" | grep -q '^2'; then
+        echo_warn "Warranty is void for this Pi"
+    fi
+
     rev=$(fgrep Revision /proc/cpuinfo \
           | awk '{print substr($NF,length($NF)-5,6)}')
     case "$rev" in
@@ -57,111 +76,121 @@ detect_model() {
         a22082) rel=2016Q1 mod=3B  pcb=1.2 mem=1GB   mfg=Embest;;
         a32082) rel=2016Q4 mod=3B  pcb=1.2 mem=1GB   mfg=Sony\ Japan;;
         a020d3) rel=2018Q1 mod=3B+ pcb=1.3 mem=1GB   mfg=Sony;;
-        *) echo 'Cannot detect Raspberry Pi model!' >&2; return;;
+        *) echo_error "Cannot detect Raspberry Pi model"; return;;
     esac
-    echo "rel=\"$rel\" mod=\"$mod\" pcb=\"$pcb\" mem=\"$mem\" mfg=\"$mfg\""
-}
 
-check_freq() {
-    extract_freq() {
-        name="$1"
-        vcgencmd get_config "${name}_freq" | cut -d= -f2
-    }
-    gpu=$(extract_freq gpu)
-    core=$(extract_freq core)
-    h264=$(extract_freq h264)
-    isp=$(extract_freq isp)
-    v3d=$(extract_freq v3d)
-    arm=$(extract_freq arm)
-    sdram=$(extract_freq sdram)
+    echo_info "Model: $mod"
+    echo_info "Memory: $mem"
+    echo_info "Released: $rel"
+    echo_info "PCB revision: $pcb"
+    if [ -n "$mfg" ]; then
+        echo_info "Manufactured by: $mfg"
+    fi
 
-    [ "$core" != 0 ] || core=$gpu
-    [ "$h264" != 0 ] || h264=$gpu
-    [ "$isp"  != 0 ] || isp=$gpu
-    [ "$v3d"  != 0 ] || v3d=$gpu
+    check_freq() {
+        extract_freq() {
+            name="$1"
+            vcgencmd get_config "${name}_freq" | cut -d= -f2
+        }
+        gpu=$(extract_freq gpu)
+        core=$(extract_freq core)
+        h264=$(extract_freq h264)
+        isp=$(extract_freq isp)
+        v3d=$(extract_freq v3d)
+        arm=$(extract_freq arm)
+        sdram=$(extract_freq sdram)
 
-    match_freq() {
-        name="$1"
-        def="$2"
-        freq="$(eval echo \$$name)"
-        if [ "$freq" != "$def" ]; then
-            echo "Warning:" \
-                "${name}_freq is ${freq}MHz while the default is ${def}MHz" >&2
-            return 1
-        else
-            return 0
-        fi
-    }
+        [ "$core" != 0 ] || core=$gpu
+        [ "$h264" != 0 ] || h264=$gpu
+        [ "$isp"  != 0 ] || isp=$gpu
+        [ "$v3d"  != 0 ] || v3d=$gpu
 
-    model="$(echo $1 | tr -d 'ABCMW')"
-    case "$model" in
-        0)
-            match_freq gpu    400
-            match_freq core   300
-            match_freq h264   300
-            match_freq isp    300
-            match_freq v3d    300
-            match_freq arm   1000
-            match_freq sdram  450
-            ;;
-        1|1\+)
-            match_freq gpu    250
-            match_freq core   250
-            match_freq h264   250
-            match_freq isp    250
-            match_freq v3d    250
-            match_freq arm    700
-            match_freq sdram  400
-            ;;
-        2)
-            match_freq gpu    250
-            match_freq core   250
-            match_freq h264   250
-            match_freq isp    250
-            match_freq v3d    250
-            match_freq arm    900
-            match_freq sdram  400
-            ;;
-        2\+|3)
-            match_freq gpu    300
-            match_freq core   400
-            match_freq h264   300
-            match_freq isp    300
-            match_freq v3d    300
-            match_freq arm   1200
-            match_freq sdram  450
-            ;;
-        3\+)
-            match_freq gpu    300
-            match_freq core   400
-            match_freq h264   300
-            match_freq isp    300
-            match_freq v3d    300
-            match_freq arm   1400
-            if ! match_freq sdram 500; then
-                echo "Note: Early versions of firmware set sdram_freq to 450MHz"
+        match_freq() {
+            name="$1"
+            def="$2"
+            freq="$(eval echo \$$name)"
+            if [ "$freq" != "$def" ]; then
+                echo_warn "${name}_freq is ${freq}MHz instead of ${def}MHz"
+                return 1
+            else
+                return 0
             fi
-            ;;
-        *) echo "Unknown model $model" >&2;;
-    esac
+        }
+
+        model="$(echo "$mod" | tr -d 'ABCMW')"
+        case "$model" in
+            0)
+                match_freq gpu    400
+                match_freq core   300
+                match_freq h264   300
+                match_freq isp    300
+                match_freq v3d    300
+                match_freq arm   1000
+                match_freq sdram  450
+                ;;
+            1|1\+)
+                match_freq gpu    250
+                match_freq core   250
+                match_freq h264   250
+                match_freq isp    250
+                match_freq v3d    250
+                match_freq arm    700
+                match_freq sdram  400
+                ;;
+            2)
+                match_freq gpu    250
+                match_freq core   250
+                match_freq h264   250
+                match_freq isp    250
+                match_freq v3d    250
+                match_freq arm    900
+                match_freq sdram  400
+                ;;
+            2\+|3)
+                match_freq gpu    300
+                match_freq core   400
+                match_freq h264   300
+                match_freq isp    300
+                match_freq v3d    300
+                match_freq arm   1200
+                match_freq sdram  450
+                ;;
+            3\+)
+                match_freq gpu    300
+                match_freq core   400
+                match_freq h264   300
+                match_freq isp    300
+                match_freq v3d    300
+                match_freq arm   1400
+                if ! match_freq sdram 500; then
+                    echo_sup "Early versions of firmware set sdram_freq to" \
+                            "450MHz on Pi3+"
+                fi
+                ;;
+            *) echo_error "Unknown model $model";;
+        esac
+    }
+
+    check_freq
 }
 
 check_hdmi() {
     if ! tvservice -s | fgrep -q  'TV is off'; then
-        echo "Warning: HDMI is turned on. Run 'tvservice -o' to turn it off."
+        echo_warn "HDMI is turned on"
+        echo_sup "Run 'tvservice -o' to turn it off"
     fi
 }
 
 check_throttled() {
     th=$(vcgencmd get_throttled | cut -d= -f2)
     if [ $(awk "BEGIN{print and($th, lshift(1, 16))}") -ne 0 ]; then
-        echo "Warning: Under-voltage has occured"
+        echo_warn "Under-voltage has occured"
     fi
     if [ $(awk "BEGIN{print and($th, lshift(1, 17))}") -ne 0 ]; then
-        echo "Warning: ARM frequency capping has occured"
+        echo_warn "ARM frequency capping has occured"
     fi
     if [ $(awk "BEGIN{print and($th, lshift(1, 18))}") -ne 0 ]; then
-        echo "Warning: Throttling has occured"
+        echo_warn "Throttling has occured"
     fi
 }
 
@@ -169,42 +198,34 @@ check_overlay() {
     overlays=$(sudo vcdbg log msg |& cut -d: -f2- | grep '^ Loaded overlay' |
             awk '{print $3}' | tr -d "'")
     if ! echo "$overlays" | fgrep -q pi3-disable-bt; then
-        echo "Warning: Bluetooth is enabled"
+        echo_warn "Bluetooth is enabled"
     fi
     if ! echo "$overlays" | fgrep -q pi3-disable-wifi; then
-        echo "Warning: Wi-Fi is enabled"
+        echo_warn "Wi-Fi is enabled"
     fi
 }
 
 check_turbo() {
     val=$(vcgencmd get_config force_turbo | cut -d= -f2)
     if [ "$val" -eq 0 ]; then
-        echo "Warning: Turbo is not set. Add force_turbo=1 to config.txt."
+        echo_warn "Turbo is not set"
+        echo_sup "Add force_turbo=1 to config.txt"
     fi
     val=$(vcgencmd get_config avoid_warnings | cut -d= -f2)
     if [ "$val" -ne 2 ]; then
-        echo "Warning: avoid_warnings is not 2"
+        echo_warn "avoid_warnings is not 2"
     fi
 }
 
 check_swap() {
     if mount | fgrep -q swap; then
-        echo "Warning: Swap is enabled. Remove dphys-swapfile package."
+        echo_warn "Swap is enabled"
+        echo_sup "Remove dphys-swapfile package"
     fi
 }
 
-eval $(detect_model)
-if [ -n "$mod" ]; then
-    echo "Model: $mod"
-    echo "Memory: $mem"
-    echo "Released: $rel"
-    echo "PCB revision: $pcb"
-    if [ -n "$mfg" ]; then
-        echo "Manufactured by: $mfg"
-    fi
-fi
 show_info
-check_freq "$mod"
+check_model_and_freq
 check_hdmi
 check_throttled
 check_overlay
