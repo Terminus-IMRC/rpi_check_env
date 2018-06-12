@@ -174,6 +174,15 @@ check_model_and_freq() {
     check_freq
 }
 
+check_governor() {
+    gov=$(cat /sys/devices/system/cpu/cpufreq/policy0/scaling_governor)
+    if [ "$gov" != "performance" ]; then
+        echo_warn "CPU freq governor is $gov instead of performance"
+        echo_sup "Try 'echo performance | sudo tee" \
+            "/sys/devices/system/cpu/cpufreq/policy0/scaling_governor'"
+    fi
+}
+
 check_hdmi() {
     if ! tvservice -s | fgrep -q  'TV is off'; then
         echo_warn "HDMI is turned on"
@@ -240,6 +249,7 @@ check_swap() {
 
 show_version
 check_model_and_freq
+check_governor
 check_hdmi
 check_throttled
 check_overlay
