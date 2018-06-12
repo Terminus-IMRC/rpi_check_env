@@ -16,7 +16,7 @@ echo_sup() {
     echo "  * $@"
 }
 
-show_info() {
+show_version() {
     kern=$(vcgencmd get_config kernel | cut -d= -f2)
     if [ -n "$kern" ]; then
         echo_info "Kernel: $kern"
@@ -42,8 +42,8 @@ check_model_and_freq() {
         echo_warn "Warranty is void for this Pi"
     fi
 
-    rev=$(fgrep Revision /proc/cpuinfo \
-          | awk '{print substr($NF,length($NF)-5,6)}')
+    rev=$(fgrep Revision /proc/cpuinfo |
+            awk '{print substr($NF,length($NF)-5,6)}')
     case "$rev" in
         0002)   rel=2012Q1 mod=1B  pcb=1.0 mem=256MB mfg=;;
         0003)   rel=2012Q3 mod=1B  pcb=1.0 mem=256MB mfg=;;
@@ -100,10 +100,10 @@ check_model_and_freq() {
         arm=$(extract_freq arm)
         sdram=$(extract_freq sdram)
 
-        [ "$core" != 0 ] || core=$gpu
-        [ "$h264" != 0 ] || h264=$gpu
-        [ "$isp"  != 0 ] || isp=$gpu
-        [ "$v3d"  != 0 ] || v3d=$gpu
+        [ "$core" -ne 0 ] || core=$gpu
+        [ "$h264" -ne 0 ] || h264=$gpu
+        [ "$isp"  -ne 0 ] || isp=$gpu
+        [ "$v3d"  -ne 0 ] || v3d=$gpu
 
         match_freq() {
             name="$1"
@@ -177,6 +177,7 @@ check_model_and_freq() {
 check_hdmi() {
     if ! tvservice -s | fgrep -q  'TV is off'; then
         echo_warn "HDMI is turned on"
+        echo_sup "HDMI occupies the bus a little, which may affect performance"
         echo_sup "Run 'tvservice -o' to turn it off"
     fi
 }
@@ -185,12 +186,14 @@ check_throttled() {
     th=$(vcgencmd get_throttled | cut -d= -f2)
     if [ $(awk "BEGIN{print and($th, lshift(1, 16))}") -ne 0 ]; then
         echo_warn "Under-voltage has occured"
+        echo_sup "Try another robust power supply"
     fi
     if [ $(awk "BEGIN{print and($th, lshift(1, 17))}") -ne 0 ]; then
         echo_warn "ARM frequency capping has occured"
     fi
     if [ $(awk "BEGIN{print and($th, lshift(1, 18))}") -ne 0 ]; then
         echo_warn "Throttling has occured"
+        echo_sup "This may because of under-voltage"
     fi
 }
 
@@ -199,9 +202,15 @@ check_overlay() {
             awk '{print $3}' | tr -d "'")
     if ! echo "$overlays" | fgrep -q pi3-disable-bt; then
         echo_warn "Bluetooth is enabled"
+        echo_sup "Bluetooth inquiry occupies the bus a little," \
+                "which may affect performance"
+        echo_sup "Add 'dtoverlay=pi3-disable-bt' to config.txt to disable it"
     fi
     if ! echo "$overlays" | fgrep -q pi3-disable-wifi; then
         echo_warn "Wi-Fi is enabled"
+        echo_sup "Wi-Fi inquiry occupies the bus a little," \
+                "which may affect performance"
+        echo_sup "Add 'dtoverlay=pi3-disable-wifi' to config.txt to disable it"
     fi
 }
 
@@ -209,11 +218,16 @@ check_turbo() {
     val=$(vcgencmd get_config force_turbo | cut -d= -f2)
     if [ "$val" -eq 0 ]; then
         echo_warn "Turbo is not set"
-        echo_sup "Add force_turbo=1 to config.txt"
+        echo_sup "If not in turbo mode, GPU freqs are scaled dynamically," \
+                "which may affect performance on a large VPM DMA transfers" \
+                "for example"
+        echo_sup "Add force_turbo=1 to config.txt to enable turbo mode"
     fi
     val=$(vcgencmd get_config avoid_warnings | cut -d= -f2)
     if [ "$val" -ne 2 ]; then
-        echo_warn "avoid_warnings is not 2"
+        echo_warn "avoid_warnings is not 2 in config.txt"
+        echo_sup "Set avoid_warnings to 2 to disable GPU frequency scaling" \
+                "when under-voltage"
     fi
 }
 
@@ -224,7 +238,7 @@ check_swap() {
     fi
 }
 
-show_info
+show_version
 check_model_and_freq
 check_hdmi
 check_throttled
