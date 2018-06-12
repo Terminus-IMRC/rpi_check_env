@@ -117,9 +117,9 @@ check_model_and_freq() {
             fi
         }
 
-        model="$(echo "$mod" | tr -d 'ABCMW')"
+        model="$(echo "$mod" | tr -d 'ABCM')"
         case "$model" in
-            0)
+            0|0W)
                 match_freq gpu    400
                 match_freq core   300
                 match_freq h264   300
@@ -172,6 +172,8 @@ check_model_and_freq() {
     }
 
     check_freq
+
+    export model
 }
 
 check_governor() {
@@ -207,6 +209,7 @@ check_throttled() {
 }
 
 check_overlay() {
+    [ "$model" == "0W" -o "$model" == "3" -o "$model" == "3+" ] || return
     overlays=$(sudo vcdbg log msg |& cut -d: -f2- | grep '^ Loaded overlay' |
             awk '{print $3}' | tr -d "'")
     if ! echo "$overlays" | fgrep -q pi3-disable-bt; then
