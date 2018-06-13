@@ -34,7 +34,6 @@ show_version() {
     echo_info "Firmware date: $firm_date"
 }
 
-# See https://elinux.org/RPi_HardwareHistory#Board_Revision_History
 check_model_and_freq() {
     rev=$(fgrep Revision /proc/cpuinfo | cut -d: -f2 | tr -d '[:space:]')
     echo_info "Revision: $rev"
@@ -42,50 +41,141 @@ check_model_and_freq() {
         echo_warn "Warranty is void for this Pi"
     fi
 
+    # See https://www.raspberrypi.org/documentation/hardware/raspberrypi/revision-codes/README.md
+    detect_model_new() {
+        awk -v "rev_code=0x$rev" '
+            function extract_bits(val, msb, lsb) {
+                mask = lshift(lshift(1, msb - lsb + 1) - 1, lsb);
+                return rshift(and(val, mask), lsb);
+            }
+            BEGIN {
+                rev_code = strtonum(rev_code);
+                pcb  = extract_bits(rev_code,  3,  0);
+                mod  = extract_bits(rev_code, 11,  4);
+                proc = extract_bits(rev_code, 15, 12);
+                mfg  = extract_bits(rev_code, 19, 16);
+                mem  = extract_bits(rev_code, 22, 20);
+                new  = extract_bits(rev_code, 23, 23);
+                if (new != 1) {
+                    print("pcb=unk mod=unk proc=unk mfg=unk mem=unk");
+                    exit 1;
+                }
+                pcb = sprintf("1.%d", pcb);
+                switch (mod) {
+                    case 0:
+                        mod = "1A"; break;
+                    case 1:
+                        mod = "1B"; break;
+                    case 2:
+                        mod = "1A+"; break;
+                    case 3:
+                        mod = "1B+"; break;
+                    case 4:
+                        if (proc == 1) # BCM2836
+                            mod = "2B";
+                        else           # BCM2837
+                            mod = "2B+";
+                        break;
+                    case 5:
+                        mod = "@"; break;
+                    case 6:
+                        mod = "CM1"; break;
+                    case 8:
+                        mod = "3B"; break;
+                    case 9:
+                        mod = "0"; break;
+                    case 10:
+                        mod = "CM3"; break;
+                    case 12:
+                        mod = "0W"; break;
+                    case 13:
+                        mod = "3B+"; break;
+                    default:
+                        mod = sprintf("unk0x%02x", mod); break;
+                }
+                switch (mfg) {
+                    case 0:
+                        mfg = "Sony UK"; break;
+                    case 1:
+                        mfg = "Egoman"; break;
+                    case 2:
+                    case 4:
+                        mfg = sprintf("Embest%d", mfg); break;
+                    case 3:
+                        mfg = "Sony Japan"; break;
+                    case 5:
+                        mfg = "Stadium"; break;
+                    default:
+                        mfg = sprintf("unk0x1x", mfg); break;
+                }
+                switch (mem) {
+                    case 0:
+                        mem = "256MB"; break;
+                    case 1:
+                        mem = "512MB"; break;
+                    case 2:
+                        mem = "1GB"; break;
+                    default:
+                        mem = sprintf("unk0x%1x", mem); break;
+                }
+                printf("pcb=\"%s\" mod=\"%s\" mfg=\"%s\" mem=\"%s\"\n",
+                        pcb, mod, mfg, mem);
+            }'
+        return $?
+    }
+
     rev=$(fgrep Revision /proc/cpuinfo |
             awk '{print substr($NF,length($NF)-5,6)}')
+    # See https://elinux.org/RPi_HardwareHistory#Board_Revision_History
     case "$rev" in
         0002)   rel=2012Q1 mod=1B  pcb=1.0 mem=256MB mfg=;;
         0003)   rel=2012Q3 mod=1B  pcb=1.0 mem=256MB mfg=;;
-        0004)   rel=2012Q3 mod=1B  pcb=2.0 mem=256MB mfg=Sony;;
+        0004)   rel=2012Q3 mod=1B  pcb=2.0 mem=256MB mfg=Sony\ UK;;
         0005)   rel=2012Q4 mod=1B  pcb=2.0 mem=256MB mfg=Qisda;;
         0006)   rel=2012Q4 mod=1B  pcb=2.0 mem=256MB mfg=Egoman;;
         0007)   rel=2013Q1 mod=1A  pcb=2.0 mem=256MB mfg=Egoman;;
-        0008)   rel=2013Q1 mod=1A  pcb=2.0 mem=256MB mfg=Sony;;
+        0008)   rel=2013Q1 mod=1A  pcb=2.0 mem=256MB mfg=Sony\ UK;;
         0009)   rel=2013Q1 mod=1A  pcb=2.0 mem=256MB mfg=Qisda;;
         000d)   rel=2012Q4 mod=1B  pcb=2.0 mem=512MB mfg=Egoman;;
-        000e)   rel=2012Q4 mod=1B  pcb=2.0 mem=512MB mfg=Sony;;
+        000e)   rel=2012Q4 mod=1B  pcb=2.0 mem=512MB mfg=Sony\ UK;;
         000f)   rel=2012Q4 mod=1B  pcb=2.0 mem=512MB mfg=Qisda;;
-        0010)   rel=2014Q3 mod=1B+ pcb=1.0 mem=512MB mfg=Sony;;
-        0011)   rel=2014Q2 mod=CM1 pcb=1.0 mem=512MB mfg=Sony;;
-        0012)   rel=2014Q4 mod=1A+ pcb=1.1 mem=256MB mfg=Sony;;
+        0010)   rel=2014Q3 mod=1B+ pcb=1.0 mem=512MB mfg=Sony\ UK;;
+        0011)   rel=2014Q2 mod=CM1 pcb=1.0 mem=512MB mfg=Sony\ UK;;
+        0012)   rel=2014Q4 mod=1A+ pcb=1.1 mem=256MB mfg=Sony\ UK;;
         0013)   rel=2015Q1 mod=1B+ pcb=1.2 mem=512MB mfg=Embest;;
         0014)   rel=2014Q2 mod=CM1 pcb=1.0 mem=512MB mfg=Embest;;
-        a01040) rel=unk    mod=2B  pcb=1.0 mem=1GB   mfg=Sony;;
-        a01041) rel=2015Q1 mod=2B  pcb=1.1 mem=1GB   mfg=Sony;;
+        0015)              mod=1A+ pcb=1.1 mem=256MB/512MB mfg=Embest;;
+        a01040)            mod=2B  pcb=1.0 mem=1GB   mfg=Sony\ UK;;
+        a01041) rel=2015Q1 mod=2B  pcb=1.1 mem=1GB   mfg=Sony\ UK;;
         a21041) rel=2015Q1 mod=2B  pcb=1.1 mem=1GB   mfg=Embest;;
         a22042) rel=2016Q3 mod=2B+ pcb=1.2 mem=1GB   mfg=Embest;;
-        900021) rel=2016Q3 mod=1A+ pcb=1.1 mem=512MB mfg=Sony;;
-        900032) rel=2016Q2 mod=1B+ pcb=1.2 mem=512MB mfg=Sony;;
-        900092) rel=2015Q4 mod=0   pcb=1.2 mem=512MB mfg=Sony;;
-        900093) rel=2016Q2 mod=0   pcb=1.3 mem=512MB mfg=Sony;;
+        900021) rel=2016Q3 mod=1A+ pcb=1.1 mem=512MB mfg=Sony\ UK;;
+        900032) rel=2016Q2 mod=1B+ pcb=1.2 mem=512MB mfg=Sony\ UK;;
+        900092) rel=2015Q4 mod=0   pcb=1.2 mem=512MB mfg=Sony\ UK;;
+        900093) rel=2016Q2 mod=0   pcb=1.3 mem=512MB mfg=Sony\ UK;;
         920093) rel=2016Q4 mod=0   pcb=1.3 mem=512MB mfg=Embest;;
-        9000c1) rel=2017Q1 mod=0W  pcb=1.1 mem=512MB mfg=Sony;;
-        a02082) rel=2016Q1 mod=3B  pcb=1.2 mem=1GB   mfg=Sony;;
-        a020a0) rel=2017Q1 mod=CM3 pcb=1.0 mem=1GB   mfg=Sony;;
+        9000c1) rel=2017Q1 mod=0W  pcb=1.1 mem=512MB mfg=Sony\ UK;;
+        a02082) rel=2016Q1 mod=3B  pcb=1.2 mem=1GB   mfg=Sony\ UK;;
+        a020a0) rel=2017Q1 mod=CM3 pcb=1.0 mem=1GB   mfg=Sony\ UK;;
         a22082) rel=2016Q1 mod=3B  pcb=1.2 mem=1GB   mfg=Embest;;
         a32082) rel=2016Q4 mod=3B  pcb=1.2 mem=1GB   mfg=Sony\ Japan;;
-        a020d3) rel=2018Q1 mod=3B+ pcb=1.3 mem=1GB   mfg=Sony;;
-        *) echo_error "Cannot detect Raspberry Pi model"; return;;
+        a52082)            mod=3B  pcb=1.2 mem=1GB   mfg=Stadium;;
+        a020d3) rel=2018Q1 mod=3B+ pcb=1.3 mem=1GB   mfg=Sony\ UK;;
+        *)
+            echo_warn "Model is not on the eLinux list, using bit fields"
+            s=$(detect_model_new)
+            if [ $? -ne 0 ]; then
+                echo_error "Cannot detect Raspberry Pi model"
+                return
+            fi
+            eval $s;;
     esac
 
     echo_info "Model: $mod"
     echo_info "Memory: $mem"
-    echo_info "Released: $rel"
+    [ -n "$rel" ] && echo_info "Released: $rel"
     echo_info "PCB revision: $pcb"
-    if [ -n "$mfg" ]; then
-        echo_info "Manufactured by: $mfg"
-    fi
+    [ -n "$mfg" ] && echo_info "Manufactured by: $mfg"
 
     check_freq() {
         extract_freq() {
